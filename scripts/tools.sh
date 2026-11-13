@@ -3,7 +3,7 @@
 set -u
 log(){ echo "[tools] $*"; }
 sudo apt-get update -y >/dev/null 2>&1
-for p in nmap nikto whatweb sqlmap sslscan dirb gobuster ffuf wafw00f wapiti dnsutils whois jq unzip git curl python3-pip openjdk-17-jre ruby ruby-dev build-essential libcurl4-openssl-dev libxml2-dev libxslt1-dev zlib1g-dev; do
+for p in nmap nikto whatweb sqlmap sslscan dirb gobuster ffuf wafw00f wapiti dnsutils whois jq unzip git curl python3-pip openjdk-17-jre ruby ruby-dev build-essential libcurl4-openssl-dev libxml2-dev libxslt1-dev zlib1g-dev zenity firefox-esr; do
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$p" >/dev/null 2>&1 && log "apt ok: $p" || log "apt SKIP: $p"
 done
 
@@ -28,10 +28,27 @@ sudo git clone -q --depth 1 https://github.com/drwetter/testssl.sh /opt/testssl 
 # WPScan
 sudo gem install wpscan --no-document >/dev/null 2>&1 && log "ok: wpscan" || log "SKIP: wpscan"
 
+# All-in-one scanner: combined tool + GUI launcher + desktop icon
+mkdir -p "$HOME/.local/bin" "$HOME/Desktop/scan-reports"
+cp "$GITHUB_WORKSPACE/scripts/allscan.sh" "$HOME/.local/bin/allscan.sh" && chmod +x "$HOME/.local/bin/allscan.sh"
+cp "$GITHUB_WORKSPACE/scripts/launcher.sh" "$HOME/.local/bin/scan-launcher.sh" && chmod +x "$HOME/.local/bin/scan-launcher.sh"
+cat > "$HOME/Desktop/All-in-One Scanner.desktop" <<DESK
+[Desktop Entry]
+Type=Application
+Name=All-in-One Scanner
+Comment=Enter a URL, runs nmap/nikto/nuclei/whatweb/sslscan/ffuf/subfinder/katana/wapiti and opens one report
+Exec=$HOME/.local/bin/scan-launcher.sh
+Icon=utilities-terminal
+Terminal=false
+DESK
+chmod +x "$HOME/Desktop/All-in-One Scanner.desktop"
+log "ok: allscan + launcher + desktop icon"
+
 # Desktop notes + ZAP launcher
 mkdir -p "$HOME/Desktop"
 cat > "$HOME/Desktop/SCAN-TOOLS.txt" <<'TXT'
 Open Terminal and use:
+  allscan target                ALL-IN-ONE: runs every tool below, one combined report
   nmap -sV -sC target          ports + services + default scripts
   nikto -h https://target      web server misconfig/known issues
   nuclei -u https://target     template-based vuln scanner
