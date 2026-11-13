@@ -1,0 +1,79 @@
+name: Linux Desktop + Discord
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */3 * * *'   # safety net: restarts it if the chain breaks
+
+concurrency:
+  group: desktop
+  cancel-in-progress: false  # next run waits, never kills the current one
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+      STATE_KEY: ${{ secrets.STATE_KEY }}
+      ISSUE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mark start
+        run: echo "START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Restore saved Discord login
+        uses: actions/cache/restore@v4
+        with:
+          path: discord-state.gpg
+          key: discord-state-${{ github.run_id }}
+          restore-keys: discord-state-
+
+      - name: Install desktop, Discord, tunnel
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            xvfb x11vnc novnc websockify xfce4 xfce4-terminal thunar mousepad dbus-x11 \
+            fonts-noto-color-emoji fonts-dejavu gnupg curl ca-certificates xdg-utils
+          curl -fsSL "https://discord.com/api/download?platform=linux&format=deb" -o discord.deb
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ./discord.deb
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+
+      - name: Decrypt saved Discord login
+        run: |
+          if [ -f discord-state.gpg ]; then
+            mkdir -p "$HOME/.config"
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$STATE_KEY" -d discord-state.gpg | tar xzf - -C "$HOME/.config" \
+              && echo "restored login" || echo "restore failed, starting fresh"
+          else
+            echo "no saved state (first run)"
+          fi
+
+      - name: Run desktop (stays alive, restarts itself before 6h)
+        run: bash scripts/run.sh
+
+      - name: Pack Discord login (encrypted)
+        if: always()
+        run: |
+          pkill -TERM -f /usr/share/discord || true
+          sleep 6
+          if [ -d "$HOME/.config/discord" ]; then
+            tar czf - -C "$HOME/.config" --exclude='discord/Cache' --exclude='discord/Code Cache' --exclude='discord/GPUCache' --exclude='discord/DawnCache' --exclude='discord/Crashpad' discord \
+              | gpg --batch --yes --pinentry-mode loopback --passphrase "$STATE_KEY" --symmetric --cipher-algo AES256 -o discord-state.gpg
+            ls -la discord-state.gpg
+          fi
+
+      - name: Save Discord login
+        if: always() && hashFiles('discord-state.gpg') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: discord-state.gpg
+          key: discord-state-${{ github.run_id }}
