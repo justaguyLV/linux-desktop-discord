@@ -47,6 +47,10 @@ jobs:
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
 
+      - name: Install web scanning tools
+        continue-on-error: true
+        run: bash scripts/tools.sh
+
       - name: Decrypt saved Discord login
         run: |
           if [ -f discord-state.gpg ]; then
